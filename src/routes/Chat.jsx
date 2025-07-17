@@ -1,0 +1,242 @@
+import { useEffect, useState } from "react";
+import { useAuth, supabase } from "../AuthContext";
+import { useNavigate } from "react-router";
+
+import UserStatusIndicator from "../components/UserStatusIndicator";
+
+const Chat = () => {
+  const { session, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const [messages, setMessages] = useState([]);
+  const [chatlist, setChatlist] = useState({});
+
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [newMessage, setNewMessage] = useState("");
+
+  const [loading, setLoading] = useState(true);
+
+  const fetchUserData = async (userId) => {
+    const { data, error } = await supabase
+      .from("userdata")
+      .select("*")
+      .eq("user_id", userId)
+      .single();
+
+    if (!error && data) {
+      setChatlist((prev) => ({ ...prev, [data.user_id]: data }));
+    }
+  };
+
+  const fetchMessages = async () => {
+    const { data: messageData, error: messageError } = await supabase
+      .from("messages")
+      .select("*")
+      .or(`sender_id.eq.${session.user.id},receiver_id.eq.${session.user.id}`)
+      .order("created_at", { ascending: true });
+
+    if (messageError) {
+      console.error("Error fetching messages:", messageError.message);
+      setMessages([]);
+      return;
+    }
+
+    setMessages(messageData);
+
+    // for all unseen messages, mark them as seen
+    const unseenMessages = messageData.filter(
+      (msg) => msg.receiver_id === session.user.id && !msg.seen
+    );
+
+    const userIds = new Set([session.user.id]);
+    messageData.forEach((msg) => {
+      userIds.add(msg.sender_id);
+      userIds.add(msg.receiver_id);
+    });
+
+    const { data: userData, error: userError } = await supabase
+      .from("userdata")
+      .select("*")
+      .in("user_id", Array.from(userIds));
+
+    if (userError) {
+      console.error("Error fetching chatlist:", userError.message);
+      setChatlist(null);
+      return;
+    }
+
+    const chatMap = {};
+    userData.forEach((user) => {
+      chatMap[user.user_id] = user;
+    });
+
+    setChatlist(chatMap);
+
+    console.log(userIds, chatMap, messageData);
+  };
+
+  const setMessageSeen = async (messageId) => {
+    console.log("Marking message as seen:", messageId);
+
+    const { error } = await supabase
+      .from("messages")
+      .update({ seen: true })
+      .eq("id", messageId);
+
+    if (error) {
+      console.error("Error marking message as seen:", error.message);
+    }
+  };
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!newMessage.trim() || !selectedUser) return;
+
+    const { error } = await supabase.from("messages").insert([
+      {
+        sender_id: session.user.id,
+        receiver_id: selectedUser,
+        message: newMessage,
+      },
+    ]);
+
+    if (error) {
+      console.error("Error sending message:", error.message);
+      return;
+    }
+    setNewMessage("");
+  };
+
+  const handleRealtimeChange = (payload) => {
+    if (payload.eventType === "INSERT") {
+      setMessages((prev) => [...prev, payload.new]);
+
+      const newMessage = payload.new;
+      const involvedUsers = [newMessage.sender_id, newMessage.receiver_id];
+
+      involvedUsers.forEach((userId) => {
+        if (!chatlist[userId]) {
+          fetchUserData(userId);
+        }
+      });
+    } else if (payload.eventType === "UPDATE") {
+      setMessages((prev) =>
+        prev.map((msg) => (msg.id === payload.new.id ? payload.new : msg))
+      );
+    }
+  };
+
+  useEffect(() => {
+    if (!session) {
+      navigate("/login");
+    } else {
+      fetchMessages().then(() => {
+        setLoading(false);
+      });
+
+      const subscription = supabase
+        .channel("public:messages")
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "messages",
+          },
+          (payload) => {
+            console.log("Realtime change received:", payload);
+            handleRealtimeChange(payload);
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(subscription);
+      };
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedUser) {
+      const unseenMessages = messages.filter(
+        (msg) => msg.sender_id === selectedUser && !msg.seen
+      );
+
+      unseenMessages.forEach((msg) => setMessageSeen(msg.id));
+    }
+  }, [selectedUser, messages]);
+
+  if (loading) {
+    return <p>Loading...</p>;
+  }
+
+  return (
+    <>
+      <h1>Chat page</h1>
+
+      <p>Welcome back: {chatlist[session.user.id].username}</p>
+      <button
+        onClick={() => {
+          logout();
+          navigate("/login");
+        }}
+      >
+        Logout
+      </button>
+
+      <ul>
+        {Object.values(chatlist)
+          .filter((user) => user.user_id !== session.user.id)
+          .map((user) => (
+            <li key={user.user_id}>
+              <button onClick={() => setSelectedUser(user.user_id)}>
+                {user.username}
+              </button>
+
+              <UserStatusIndicator userId={user.user_id} />
+            </li>
+          ))}
+      </ul>
+
+      {selectedUser && (
+        <div>
+          <h2>Chat with {chatlist[selectedUser].username}</h2>
+          <ul>
+            {messages
+              .filter(
+                (msg) =>
+                  (msg.sender_id === session.user.id &&
+                    msg.receiver_id === selectedUser) ||
+                  (msg.receiver_id === session.user.id &&
+                    msg.sender_id === selectedUser)
+              )
+              .map((msg) => (
+                <li key={msg.id}>
+                  <strong>{chatlist[msg.sender_id].username}:</strong>{" "}
+                  {msg.message}
+                  {msg.receiver_id !== session.user.id
+                    ? msg.seen
+                      ? " (seen)"
+                      : " (not seen)"
+                    : null}
+                </li>
+              ))}
+          </ul>
+
+          <form onSubmit={handleSendMessage}>
+            <input
+              type="text"
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              placeholder="Type your message"
+              required
+            />
+            <button type="submit">Send</button>
+          </form>
+        </div>
+      )}
+    </>
+  );
+};
+
+export default Chat;
