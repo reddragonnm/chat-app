@@ -126,7 +126,6 @@ const Chat = () => {
   const handleIncomingCall = async (payload) => {
     const callData = payload.new;
 
-    // Check if current user is the receiver
     if (callData.receiver_id !== session.user.id) return;
 
     if (payload.eventType === "INSERT" && callData.status === "ringing") {
@@ -137,12 +136,10 @@ const Chat = () => {
       );
 
       if (accept) {
-        // Update status to accepted
         await supabase
           .from("calls")
           .update({
             status: "accepted",
-            receiver_peer_id: peerId, // important!
           })
           .eq("id", callData.id);
 
@@ -153,7 +150,6 @@ const Chat = () => {
         myVideoRef.current.srcObject = stream;
         myVideoRef.current.play();
 
-        // Call the caller using their peerId
         const call = peer.current.call(callData.caller_peer_id, stream);
 
         call.on("stream", (remoteStream) => {
@@ -165,39 +161,11 @@ const Chat = () => {
           remoteVideoRef.current.srcObject = null;
         });
       } else {
-        // optionally: reject call
         await supabase
           .from("calls")
           .update({ status: "rejected" })
           .eq("id", callData.id);
       }
-    }
-  };
-
-  const handleCallStatusUpdate = async (payload) => {
-    const updatedCall = payload.new;
-    if (
-      updatedCall.status === "accepted" &&
-      updatedCall.caller_id === session.user.id
-    ) {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
-
-      myVideoRef.current.srcObject = stream;
-      myVideoRef.current.play();
-
-      const call = peer.current.call(updatedCall.receiver_peer_id, stream);
-
-      call.on("stream", (remoteStream) => {
-        remoteVideoRef.current.srcObject = remoteStream;
-        remoteVideoRef.current.play();
-      });
-
-      call.on("close", () => {
-        remoteVideoRef.current.srcObject = null;
-      });
     }
   };
 
@@ -233,7 +201,6 @@ const Chat = () => {
           },
           (payload) => {
             handleIncomingCall(payload);
-            handleCallStatusUpdate(payload);
           }
         )
         .subscribe();
@@ -252,9 +219,14 @@ const Chat = () => {
         myVideoRef.current.play();
 
         call.answer(stream);
+
         call.on("stream", (remoteStream) => {
           remoteVideoRef.current.srcObject = remoteStream;
           remoteVideoRef.current.play();
+        });
+
+        call.on("close", () => {
+          remoteVideoRef.current.srcObject = null;
         });
       });
 
