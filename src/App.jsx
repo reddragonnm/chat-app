@@ -1,10 +1,10 @@
 import { AuthProvider } from "./AuthContext";
 import { Routes, Route, HashRouter } from "react-router";
 
-import Home from "./routes/Home";
-import Chat from "./routes/Chat";
-import Login from "./routes/Login";
-import Register from "./routes/Register";
+import Home from "@/routes/Home";
+import Chat from "@/routes/Chat";
+import Login from "@/routes/Login";
+import Register from "@/routes/Register";
 
 const App = () => {
   return (
