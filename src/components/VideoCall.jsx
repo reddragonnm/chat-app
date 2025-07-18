@@ -1,7 +1,7 @@
 import Peer from "peerjs";
 import { useEffect, useRef, useState } from "react";
 
-import { supabase } from "@/contexts/AuthContext";
+import { supabase } from "@/AuthContext";
 
 const VideoCall = ({ userId, chatListData, selectedUser }) => {
   const peer = useRef(null);

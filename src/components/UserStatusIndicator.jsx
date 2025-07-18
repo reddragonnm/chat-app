@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase, useAuth } from "../contexts/AuthContext";
+import { supabase, useAuth } from "../AuthContext";
 
 const UserStatusIndicator = ({ userId }) => {
   const [isOnline, setIsOnline] = useState(false);

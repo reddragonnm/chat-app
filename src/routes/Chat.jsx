@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router";
 
-import { useAuth, supabase } from "@/contexts/AuthContext";
+import { useAuth, supabase } from "@/AuthContext";
 
 import VideoCall from "@/components/VideoCall";
 import ChatList from "@/components/ChatList";
