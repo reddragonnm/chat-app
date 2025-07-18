@@ -13,8 +13,6 @@ const UserStatusIndicator = ({ userId }) => {
       .sort()
       .join("-")}`;
 
-    console.log("Subscribing to channel:", channelName);
-
     const channel = supabase.channel(channelName);
 
     channel

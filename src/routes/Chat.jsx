@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
-import { useAuth, supabase } from "../AuthContext";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router";
+import Peer from "peerjs";
 
+import { useAuth, supabase } from "../AuthContext";
 import UserStatusIndicator from "../components/UserStatusIndicator";
 
 const Chat = () => {
@@ -43,11 +44,6 @@ const Chat = () => {
 
     setMessages(messageData);
 
-    // for all unseen messages, mark them as seen
-    const unseenMessages = messageData.filter(
-      (msg) => msg.receiver_id === session.user.id && !msg.seen
-    );
-
     const userIds = new Set([session.user.id]);
     messageData.forEach((msg) => {
       userIds.add(msg.sender_id);
@@ -71,13 +67,9 @@ const Chat = () => {
     });
 
     setChatlist(chatMap);
-
-    console.log(userIds, chatMap, messageData);
   };
 
   const setMessageSeen = async (messageId) => {
-    console.log("Marking message as seen:", messageId);
-
     const { error } = await supabase
       .from("messages")
       .update({ seen: true })
@@ -144,7 +136,6 @@ const Chat = () => {
             table: "messages",
           },
           (payload) => {
-            console.log("Realtime change received:", payload);
             handleRealtimeChange(payload);
           }
         )
@@ -189,6 +180,16 @@ const Chat = () => {
           .filter((user) => user.user_id !== session.user.id)
           .map((user) => (
             <li key={user.user_id}>
+              <img
+                src={
+                  user.avatarUrl ||
+                  `https://api.dicebear.com/9.x/bottts-neutral/svg?seed=${user.username}`
+                }
+                width="50"
+                height="50"
+                alt=""
+              />
+
               <button onClick={() => setSelectedUser(user.user_id)}>
                 {user.username}
               </button>

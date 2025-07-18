@@ -42,11 +42,13 @@ export const AuthProvider = ({ children }) => {
   };
 
   const register = async ({ email, password, name, username }) => {
+    const avatarUrl = `https://api.dicebear.com/9.x/bottts-neutral/svg?seed=${username}`;
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { username, name },
+        data: { username, name, avatarUrl },
       },
     });
 
