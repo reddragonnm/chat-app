@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { useAuth } from "../AuthContext";
 import { useNavigate } from "react-router";
+
+import { useAuth } from "@/contexts/AuthContext";
 
 const Register = () => {
   const [username, setUsername] = useState("");

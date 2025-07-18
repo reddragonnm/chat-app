@@ -1,40 +1,26 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router";
-import Peer from "peerjs";
 
-import { useAuth, supabase } from "../AuthContext";
-import UserStatusIndicator from "../components/UserStatusIndicator";
+import { useAuth, supabase } from "@/contexts/AuthContext";
+
+import VideoCall from "@/components/VideoCall";
+import ChatList from "@/components/ChatList";
 
 const Chat = () => {
   const { session, logout } = useAuth();
   const navigate = useNavigate();
 
   const [messages, setMessages] = useState([]);
-  const [chatlist, setChatlist] = useState({});
+  const chatList = useRef({});
 
   const [selectedUser, setSelectedUser] = useState(null);
   const [newMessage, setNewMessage] = useState("");
 
   const [loading, setLoading] = useState(true);
 
-  const peer = useRef(null);
-  const [peerId, setPeerId] = useState(null);
-  const myVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
-
-  const fetchUserData = async (userId) => {
-    const { data, error } = await supabase
-      .from("userdata")
-      .select("*")
-      .eq("user_id", userId)
-      .single();
-
-    if (!error && data) {
-      setChatlist((prev) => ({ ...prev, [data.user_id]: data }));
-    }
-  };
-
   const fetchMessages = async () => {
+    setLoading(true);
+
     const { data: messageData, error: messageError } = await supabase
       .from("messages")
       .select("*")
@@ -61,8 +47,8 @@ const Chat = () => {
       .in("user_id", Array.from(userIds));
 
     if (userError) {
-      console.error("Error fetching chatlist:", userError.message);
-      setChatlist(null);
+      console.error("Error fetching chatList:", userError.message);
+      chatList.current = {};
       return;
     }
 
@@ -71,7 +57,8 @@ const Chat = () => {
       chatMap[user.user_id] = user;
     });
 
-    setChatlist(chatMap);
+    chatList.current = chatMap;
+    setLoading(false);
   };
 
   const setMessageSeen = async (messageId) => {
@@ -107,15 +94,6 @@ const Chat = () => {
   const handleRealtimeMessageChange = (payload) => {
     if (payload.eventType === "INSERT") {
       setMessages((prev) => [...prev, payload.new]);
-
-      const newMessage = payload.new;
-      const involvedUsers = [newMessage.sender_id, newMessage.receiver_id];
-
-      involvedUsers.forEach((userId) => {
-        if (!chatlist[userId]) {
-          fetchUserData(userId);
-        }
-      });
     } else if (payload.eventType === "UPDATE") {
       setMessages((prev) =>
         prev.map((msg) => (msg.id === payload.new.id ? payload.new : msg))
@@ -123,59 +101,11 @@ const Chat = () => {
     }
   };
 
-  const handleIncomingCall = async (payload) => {
-    const callData = payload.new;
-
-    if (callData.receiver_id !== session.user.id) return;
-
-    if (payload.eventType === "INSERT" && callData.status === "ringing") {
-      const accept = window.confirm(
-        `${
-          chatlist[callData.caller_id]?.username || "Someone"
-        } is calling you. Accept?`
-      );
-
-      if (accept) {
-        await supabase
-          .from("calls")
-          .update({
-            status: "accepted",
-          })
-          .eq("id", callData.id);
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true,
-        });
-        myVideoRef.current.srcObject = stream;
-        myVideoRef.current.play();
-
-        const call = peer.current.call(callData.caller_peer_id, stream);
-
-        call.on("stream", (remoteStream) => {
-          remoteVideoRef.current.srcObject = remoteStream;
-          remoteVideoRef.current.play();
-        });
-
-        call.on("close", () => {
-          remoteVideoRef.current.srcObject = null;
-        });
-      } else {
-        await supabase
-          .from("calls")
-          .update({ status: "rejected" })
-          .eq("id", callData.id);
-      }
-    }
-  };
-
   useEffect(() => {
     if (!session) {
       navigate("/login");
     } else {
-      fetchMessages().then(() => {
-        setLoading(false);
-      });
+      fetchMessages();
 
       const subscription = supabase
         .channel("public:messages")
@@ -190,56 +120,8 @@ const Chat = () => {
         )
         .subscribe();
 
-      const callSubscription = supabase
-        .channel("public:calls")
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "calls",
-          },
-          (payload) => {
-            handleIncomingCall(payload);
-          }
-        )
-        .subscribe();
-
-      const newPeer = new Peer();
-      newPeer.on("open", (id) => {
-        setPeerId(id);
-      });
-
-      newPeer.on("call", async (call) => {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true,
-        });
-        myVideoRef.current.srcObject = stream;
-        myVideoRef.current.play();
-
-        call.answer(stream);
-
-        call.on("stream", (remoteStream) => {
-          remoteVideoRef.current.srcObject = remoteStream;
-          remoteVideoRef.current.play();
-        });
-
-        call.on("close", () => {
-          remoteVideoRef.current.srcObject = null;
-        });
-      });
-
-      peer.current = newPeer;
-
       return () => {
         supabase.removeChannel(subscription);
-        supabase.removeChannel(callSubscription);
-
-        if (peer.current) {
-          peer.current.destroy();
-          peer.current = null;
-        }
       };
     }
   }, []);
@@ -254,7 +136,7 @@ const Chat = () => {
     }
   }, [selectedUser, messages]);
 
-  if (loading || !session) {
+  if (loading || !session || !chatList.current) {
     return <p>Loading...</p>;
   }
 
@@ -262,7 +144,7 @@ const Chat = () => {
     <>
       <h1>Chat page</h1>
 
-      <p>Welcome back: {chatlist[session.user.id].username}</p>
+      <p>Welcome back: {chatList.current[session.user.id].username}</p>
       <button
         onClick={() => {
           logout();
@@ -272,57 +154,21 @@ const Chat = () => {
         Logout
       </button>
 
-      <ul>
-        {Object.values(chatlist)
-          .filter((user) => user.user_id !== session.user.id)
-          .map((user) => (
-            <li key={user.user_id}>
-              <img
-                src={
-                  user.avatarUrl ||
-                  `https://api.dicebear.com/9.x/bottts-neutral/svg?seed=${user.username}`
-                }
-                width="50"
-                height="50"
-                alt=""
-              />
+      <ChatList
+        userId={session.user.id}
+        chatListData={chatList.current}
+        onChatSelect={setSelectedUser}
+      />
 
-              <button onClick={() => setSelectedUser(user.user_id)}>
-                {user.username}
-              </button>
-
-              <UserStatusIndicator userId={user.user_id} />
-            </li>
-          ))}
-      </ul>
+      <VideoCall
+        userId={session.user.id}
+        chatListData={chatList.current}
+        selectedUser={selectedUser}
+      />
 
       {selectedUser && (
         <div>
-          <h2>Chat with {chatlist[selectedUser].username}</h2>
-
-          <div>
-            <h3>Video Call</h3>
-            <video ref={myVideoRef} autoPlay muted style={{ width: "200px" }} />
-            <video ref={remoteVideoRef} autoPlay style={{ width: "200px" }} />
-          </div>
-
-          <button
-            style={{ marginLeft: "10px" }}
-            onClick={async () => {
-              if (!peerId) return;
-
-              await supabase.from("calls").insert([
-                {
-                  caller_id: session.user.id,
-                  receiver_id: chatlist[selectedUser].user_id,
-                  caller_peer_id: peerId,
-                  status: "ringing",
-                },
-              ]);
-            }}
-          >
-            📹 Call
-          </button>
+          <h2>Chat with {chatList.current[selectedUser].username}</h2>
 
           <ul>
             {messages
@@ -335,7 +181,7 @@ const Chat = () => {
               )
               .map((msg) => (
                 <li key={msg.id}>
-                  <strong>{chatlist[msg.sender_id].username}:</strong>{" "}
+                  <strong>{chatList.current[msg.sender_id].username}:</strong>{" "}
                   {msg.message}
                   {msg.receiver_id !== session.user.id
                     ? msg.seen
