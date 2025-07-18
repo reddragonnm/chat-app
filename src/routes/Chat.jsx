@@ -17,6 +17,11 @@ const Chat = () => {
 
   const [loading, setLoading] = useState(true);
 
+  const peer = useRef(null);
+  const [peerId, setPeerId] = useState(null);
+  const myVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
+
   const fetchUserData = async (userId) => {
     const { data, error } = await supabase
       .from("userdata")
@@ -99,7 +104,7 @@ const Chat = () => {
     setNewMessage("");
   };
 
-  const handleRealtimeChange = (payload) => {
+  const handleRealtimeMessageChange = (payload) => {
     if (payload.eventType === "INSERT") {
       setMessages((prev) => [...prev, payload.new]);
 
@@ -115,6 +120,84 @@ const Chat = () => {
       setMessages((prev) =>
         prev.map((msg) => (msg.id === payload.new.id ? payload.new : msg))
       );
+    }
+  };
+
+  const handleIncomingCall = async (payload) => {
+    const callData = payload.new;
+
+    // Check if current user is the receiver
+    if (callData.receiver_id !== session.user.id) return;
+
+    if (payload.eventType === "INSERT" && callData.status === "ringing") {
+      const accept = window.confirm(
+        `${
+          chatlist[callData.caller_id]?.username || "Someone"
+        } is calling you. Accept?`
+      );
+
+      if (accept) {
+        // Update status to accepted
+        await supabase
+          .from("calls")
+          .update({
+            status: "accepted",
+            receiver_peer_id: peerId, // important!
+          })
+          .eq("id", callData.id);
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true,
+        });
+        myVideoRef.current.srcObject = stream;
+        myVideoRef.current.play();
+
+        // Call the caller using their peerId
+        const call = peer.current.call(callData.caller_peer_id, stream);
+
+        call.on("stream", (remoteStream) => {
+          remoteVideoRef.current.srcObject = remoteStream;
+          remoteVideoRef.current.play();
+        });
+
+        call.on("close", () => {
+          remoteVideoRef.current.srcObject = null;
+        });
+      } else {
+        // optionally: reject call
+        await supabase
+          .from("calls")
+          .update({ status: "rejected" })
+          .eq("id", callData.id);
+      }
+    }
+  };
+
+  const handleCallStatusUpdate = async (payload) => {
+    const updatedCall = payload.new;
+    if (
+      updatedCall.status === "accepted" &&
+      updatedCall.caller_id === session.user.id
+    ) {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+
+      myVideoRef.current.srcObject = stream;
+      myVideoRef.current.play();
+
+      const call = peer.current.call(updatedCall.receiver_peer_id, stream);
+
+      call.on("stream", (remoteStream) => {
+        remoteVideoRef.current.srcObject = remoteStream;
+        remoteVideoRef.current.play();
+      });
+
+      call.on("close", () => {
+        remoteVideoRef.current.srcObject = null;
+      });
     }
   };
 
@@ -135,14 +218,56 @@ const Chat = () => {
             schema: "public",
             table: "messages",
           },
+          handleRealtimeMessageChange
+        )
+        .subscribe();
+
+      const callSubscription = supabase
+        .channel("public:calls")
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "calls",
+          },
           (payload) => {
-            handleRealtimeChange(payload);
+            handleIncomingCall(payload);
+            handleCallStatusUpdate(payload);
           }
         )
         .subscribe();
 
+      const newPeer = new Peer();
+      newPeer.on("open", (id) => {
+        setPeerId(id);
+      });
+
+      newPeer.on("call", async (call) => {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true,
+        });
+        myVideoRef.current.srcObject = stream;
+        myVideoRef.current.play();
+
+        call.answer(stream);
+        call.on("stream", (remoteStream) => {
+          remoteVideoRef.current.srcObject = remoteStream;
+          remoteVideoRef.current.play();
+        });
+      });
+
+      peer.current = newPeer;
+
       return () => {
         supabase.removeChannel(subscription);
+        supabase.removeChannel(callSubscription);
+
+        if (peer.current) {
+          peer.current.destroy();
+          peer.current = null;
+        }
       };
     }
   }, []);
@@ -157,7 +282,7 @@ const Chat = () => {
     }
   }, [selectedUser, messages]);
 
-  if (loading) {
+  if (loading || !session) {
     return <p>Loading...</p>;
   }
 
@@ -202,6 +327,31 @@ const Chat = () => {
       {selectedUser && (
         <div>
           <h2>Chat with {chatlist[selectedUser].username}</h2>
+
+          <div>
+            <h3>Video Call</h3>
+            <video ref={myVideoRef} autoPlay muted style={{ width: "200px" }} />
+            <video ref={remoteVideoRef} autoPlay style={{ width: "200px" }} />
+          </div>
+
+          <button
+            style={{ marginLeft: "10px" }}
+            onClick={async () => {
+              if (!peerId) return;
+
+              await supabase.from("calls").insert([
+                {
+                  caller_id: session.user.id,
+                  receiver_id: chatlist[selectedUser].user_id,
+                  caller_peer_id: peerId,
+                  status: "ringing",
+                },
+              ]);
+            }}
+          >
+            📹 Call
+          </button>
+
           <ul>
             {messages
               .filter(
