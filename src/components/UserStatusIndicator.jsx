@@ -47,7 +47,13 @@ const UserStatusIndicator = ({ userId }) => {
     };
   }, []);
 
-  return <span>{isOnline ? "Online" : "Offline"}</span>;
+  return (
+    <div
+      className={`w-2 h-2 rounded-full ${
+        isOnline ? "bg-green-500" : "bg-red-500"
+      }`}
+    />
+  );
 };
 
 export default UserStatusIndicator;

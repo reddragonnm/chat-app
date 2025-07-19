@@ -5,7 +5,9 @@ import { useAuth, supabase } from "@/contexts/AuthContext";
 
 import VideoCall from "@/components/VideoCall";
 import ChatList from "@/components/ChatList";
+
 import { Button } from "@/components/ui/button";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 
 const Chat = () => {
   const { session, logout } = useAuth();
@@ -144,76 +146,69 @@ const Chat = () => {
   }
 
   return (
-    <>
-      <h1>Chat page</h1>
-
-      <p>Welcome back: {chatList.current[session.user.id].username}</p>
-      <button
-        onClick={() => {
-          logout();
-          navigate("/login");
-        }}
-      >
-        Logout
-      </button>
-
+    <SidebarProvider>
       <ChatList
         userId={session.user.id}
         chatListData={chatList.current}
         onChatSelect={setSelectedUser}
+        selectedUserId={selectedUser}
       />
 
-      <VideoCall
-        userId={session.user.id}
-        chatListData={chatList.current}
-        selectedUser={selectedUser}
-        videoDialogOpen={videoDialogOpen}
-        setVideoDialogOpen={setVideoDialogOpen}
-      />
+      <main>
+        <SidebarTrigger />
 
-      {selectedUser && (
-        <div>
-          <h2>Chat with {chatList.current[selectedUser].username}</h2>
+        <VideoCall
+          userId={session.user.id}
+          chatListData={chatList.current}
+          selectedUser={selectedUser}
+          videoDialogOpen={videoDialogOpen}
+          setVideoDialogOpen={setVideoDialogOpen}
+        />
 
-          <Button onClick={() => setVideoDialogOpen(true)}>
-            Start Video Call
-          </Button>
+        {selectedUser && (
+          <div>
+            <h2>Chat with {chatList.current[selectedUser].username}</h2>
 
-          <ul>
-            {messages
-              .filter(
-                (msg) =>
-                  (msg.sender_id === session.user.id &&
-                    msg.receiver_id === selectedUser) ||
-                  (msg.receiver_id === session.user.id &&
-                    msg.sender_id === selectedUser)
-              )
-              .map((msg) => (
-                <li key={msg.id}>
-                  <strong>{chatList.current[msg.sender_id].username}:</strong>{" "}
-                  {msg.message}
-                  {msg.receiver_id !== session.user.id
-                    ? msg.seen
-                      ? " (seen)"
-                      : " (not seen)"
-                    : null}
-                </li>
-              ))}
-          </ul>
+            <Button onClick={() => setVideoDialogOpen(true)}>
+              Start Video Call
+            </Button>
 
-          <form onSubmit={handleSendMessage}>
-            <input
-              type="text"
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Type your message"
-              required
-            />
-            <button type="submit">Send</button>
-          </form>
-        </div>
-      )}
-    </>
+            <ul>
+              {messages
+                .filter(
+                  (msg) =>
+                    (msg.sender_id === session.user.id &&
+                      msg.receiver_id === selectedUser) ||
+                    (msg.receiver_id === session.user.id &&
+                      msg.sender_id === selectedUser)
+                )
+                .map((msg) => (
+                  <li key={msg.id}>
+                    <strong>{chatList.current[msg.sender_id].username}:</strong>{" "}
+                    {msg.message}
+                    {msg.receiver_id !== session.user.id
+                      ? msg.seen
+                        ? " (seen)"
+                        : " (not seen)"
+                      : null}
+                  </li>
+                ))}
+            </ul>
+
+            <form onSubmit={handleSendMessage}>
+              <input
+                type="text"
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                placeholder="Type your message"
+                required
+              />
+              <button type="submit">Send</button>
+            </form>
+          </div>
+        )}
+      </main>
+    </SidebarProvider>
   );
 };
 
