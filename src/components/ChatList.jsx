@@ -15,10 +15,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
-import { Settings } from "lucide-react";
-
-import { cn } from "@/lib/utils";
-
 const ChatList = ({ userId, chatListData, onChatSelect, selectedUserId }) => {
   const { session, logout } = useAuth();
   const navigate = useNavigate();

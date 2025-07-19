@@ -1,6 +1,8 @@
 import { useContext, createContext, useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 
+import LoadingSpinner from "@/components/LoadingSpinner";
+
 // instantiate supbase client
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_KEY;
@@ -82,7 +84,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   if (loading) {
-    return <div>Loading...</div>;
+    return <LoadingSpinner />;
   }
 
   return (
