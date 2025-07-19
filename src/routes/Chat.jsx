@@ -1,10 +1,11 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router";
 
-import { useAuth, supabase } from "@/AuthContext";
+import { useAuth, supabase } from "@/contexts/AuthContext";
 
 import VideoCall from "@/components/VideoCall";
 import ChatList from "@/components/ChatList";
+import { Button } from "@/components/ui/button";
 
 const Chat = () => {
   const { session, logout } = useAuth();
@@ -17,6 +18,8 @@ const Chat = () => {
   const [newMessage, setNewMessage] = useState("");
 
   const [loading, setLoading] = useState(true);
+
+  const [videoDialogOpen, setVideoDialogOpen] = useState(false);
 
   const fetchMessages = async () => {
     setLoading(true);
@@ -164,11 +167,17 @@ const Chat = () => {
         userId={session.user.id}
         chatListData={chatList.current}
         selectedUser={selectedUser}
+        videoDialogOpen={videoDialogOpen}
+        setVideoDialogOpen={setVideoDialogOpen}
       />
 
       {selectedUser && (
         <div>
           <h2>Chat with {chatList.current[selectedUser].username}</h2>
+
+          <Button onClick={() => setVideoDialogOpen(true)}>
+            Start Video Call
+          </Button>
 
           <ul>
             {messages
