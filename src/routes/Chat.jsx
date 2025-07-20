@@ -87,7 +87,7 @@ const Chat = () => {
 
     if (userError) {
       console.error("Error fetching chatList:", userError.message);
-      chatList.current = {};
+      setChatList({});
       setLoading(false);
       return;
     }
@@ -228,7 +228,7 @@ const Chat = () => {
 
         <VideoCall
           userId={session.user.id}
-          chatListData={chatList.current}
+          chatListData={chatList}
           selectedUser={selectedUser}
           videoDialogOpen={videoDialogOpen}
           setVideoDialogOpen={setVideoDialogOpen}

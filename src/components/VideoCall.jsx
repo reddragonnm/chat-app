@@ -12,16 +12,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  Phone,
-  PhoneOff,
-  Mic,
-  MicOff,
-  Video,
-  VideoOff,
-  Maximize2,
-  Minimize2,
-} from "lucide-react";
+import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 import IncomingCall from "./IncomingCall";
@@ -148,6 +139,7 @@ const VideoCall = ({
             stopStreams();
             setInCall(false);
 
+            console.log("attempting call end");
             supabase
               .from("calls")
               .update({
