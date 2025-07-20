@@ -5,6 +5,10 @@ import { useAuth, supabase } from "@/contexts/AuthContext";
 
 import VideoCall from "@/components/VideoCall";
 import ChatList from "@/components/ChatList";
+import Profile from "@/components/Profile";
+
+import { Toaster } from "@/components/ui/sonner";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -23,25 +27,39 @@ const Chat = () => {
   const navigate = useNavigate();
 
   const [messages, setMessages] = useState([]);
-  const chatList = useRef({});
+
+  const [chatList, setChatList] = useState({});
+  const chatListRef = useRef(chatList);
+
   const messagesEndRef = useRef(null);
 
   const [selectedUser, setSelectedUser] = useState(null);
+  const selectedUserRef = useRef(selectedUser);
+
   const [newMessage, setNewMessage] = useState("");
 
   const [loading, setLoading] = useState(true);
 
   const [videoDialogOpen, setVideoDialogOpen] = useState(false);
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
 
-  const scrollToBottom = (timeout, behavior) => {
+  useEffect(() => {
+    selectedUserRef.current = selectedUser;
+  }, [selectedUser]);
+
+  useEffect(() => {
+    chatListRef.current = chatList;
+  }, [chatList]);
+
+  const scrollToBottom = useCallback((delay = 0, behavior = "smooth") => {
     setTimeout(() => {
       if (messagesEndRef.current) {
         messagesEndRef.current.scrollIntoView({
-          behavior: behavior || "smooth",
+          behavior,
         });
       }
-    }, timeout);
-  };
+    }, delay);
+  }, []);
 
   const fetchMessages = useCallback(async () => {
     if (!session?.user?.id) return;
@@ -86,11 +104,11 @@ const Chat = () => {
       chatMap[user.user_id] = user;
     });
 
-    chatList.current = chatMap;
+    setChatList(chatMap);
     setLoading(false);
-  }, [session?.user?.id]);
+  }, []);
 
-  const setMessageSeen = async (messageId) => {
+  const setMessageSeen = useCallback(async (messageId) => {
     const { error } = await supabase
       .from("messages")
       .update({ seen: true })
@@ -99,7 +117,7 @@ const Chat = () => {
     if (error) {
       console.error("Error marking message as seen:", error.message);
     }
-  };
+  }, []);
 
   const handleSendMessage = useCallback(
     async (e) => {
@@ -118,38 +136,41 @@ const Chat = () => {
         console.error("Error sending message:", error.message);
         return;
       }
+
       setNewMessage("");
     },
-    [newMessage, selectedUser, session?.user?.id]
+    [newMessage, selectedUser]
   );
+
+  const handleRealtimeMessageChange = useCallback((payload) => {
+    if (payload.eventType === "INSERT") {
+      setMessages((prev) => [...prev, payload.new]);
+
+      if (
+        payload.new.sender_id === session.user.id ||
+        payload.new.sender_id === selectedUserRef.current
+      ) {
+        scrollToBottom(100);
+      } else {
+        toast(
+          `New message from ${
+            chatListRef.current[payload.new.sender_id]?.username || "Unknown"
+          } : ${payload.new.message}`
+        );
+      }
+    } else if (payload.eventType === "UPDATE") {
+      setMessages((prev) =>
+        prev.map((msg) => (msg.id === payload.new.id ? payload.new : msg))
+      );
+    }
+  }, []);
 
   useEffect(() => {
     if (!session) {
       navigate("/login");
-    } else {
-      fetchMessages();
+      return;
     }
-  }, [session, navigate, fetchMessages]);
-
-  useEffect(() => {
-    if (!session) return;
-
-    const handleRealtimeMessageChange = (payload) => {
-      if (payload.eventType === "INSERT") {
-        setMessages((prev) => [...prev, payload.new]);
-
-        if (
-          payload.new.sender_id === session.user.id ||
-          payload.new.sender_id === selectedUser
-        ) {
-          scrollToBottom(100);
-        }
-      } else if (payload.eventType === "UPDATE") {
-        setMessages((prev) =>
-          prev.map((msg) => (msg.id === payload.new.id ? payload.new : msg))
-        );
-      }
-    };
+    fetchMessages();
 
     const subscription = supabase
       .channel("public:messages")
@@ -167,7 +188,7 @@ const Chat = () => {
     return () => {
       supabase.removeChannel(subscription);
     };
-  }, [session?.user?.id, selectedUser, scrollToBottom]);
+  }, []);
 
   useEffect(() => {
     if (selectedUser && messages.length > 0) {
@@ -177,15 +198,28 @@ const Chat = () => {
 
       unseenMessages.forEach((msg) => setMessageSeen(msg.id));
     }
-  }, [selectedUser, messages, setMessageSeen]);
+  }, [selectedUser, messages]);
 
   useEffect(() => {
     if (selectedUser) {
       scrollToBottom(0, "auto");
     }
-  }, [selectedUser, scrollToBottom]);
+  }, [selectedUser]);
 
-  if (loading || !session || !chatList.current) {
+  const filteredMessages = useCallback(() => {
+    if (!selectedUser || !session?.user?.id) return [];
+
+    return messages.filter(
+      (msg) =>
+        (msg.sender_id === session.user.id &&
+          msg.receiver_id === selectedUser) ||
+        (msg.receiver_id === session.user.id && msg.sender_id === selectedUser)
+    );
+  }, [messages, selectedUser]);
+
+  const currentMessages = filteredMessages();
+
+  if (loading || !session || !chatList) {
     return <LoadingSpinner />;
   }
 
@@ -193,13 +227,14 @@ const Chat = () => {
     <SidebarProvider>
       <ChatList
         userId={session.user.id}
-        chatListData={chatList.current}
+        chatListData={chatList}
         onChatSelect={setSelectedUser}
         selectedUserId={selectedUser}
+        onProfileClick={() => setProfileDialogOpen(true)}
       />
 
       <main className="flex flex-col h-screen w-full">
-        {/* <SidebarTrigger /> */}
+        <SidebarTrigger className="lg:hidden md:hidden" />
 
         <VideoCall
           userId={session.user.id}
@@ -209,22 +244,22 @@ const Chat = () => {
           setVideoDialogOpen={setVideoDialogOpen}
         />
 
+        <Profile isOpen={profileDialogOpen} setIsOpen={setProfileDialogOpen} />
+
+        <Toaster position="bottom-right" />
+
         {selectedUser ? (
           <>
-            <div className="flex items-center justify-between py-3 px-20 border-b w-full">
+            <div className="flex items-center justify-between py-3 px-5 md:px-10 lg:px-20 border-b w-full">
               <div className="flex items-center gap-5">
                 <Avatar className="h-11 w-11">
-                  <AvatarImage
-                    src={chatList.current[selectedUser]?.avatar_url}
-                  />
+                  <AvatarImage src={chatList[selectedUser]?.avatar_url} />
                   <AvatarFallback>
-                    {chatList.current[selectedUser]?.username
-                      ?.charAt(0)
-                      .toUpperCase()}
+                    {chatList[selectedUser]?.username?.charAt(0).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
                 <h2 className="font-bold text-lg">
-                  {chatList.current[selectedUser]?.username}
+                  {chatList[selectedUser]?.username}
                 </h2>
               </div>
 
@@ -239,86 +274,76 @@ const Chat = () => {
               </Button>
             </div>
 
-            <ScrollArea className="overflow-scroll px-20 py-4">
+            <ScrollArea className="overflow-y-scroll px-5 md:px-10 lg:px-20 py-4">
               <div className="flex flex-col gap-3">
-                {messages
-                  .filter(
-                    (msg) =>
-                      (msg.sender_id === session.user.id &&
-                        msg.receiver_id === selectedUser) ||
-                      (msg.receiver_id === session.user.id &&
-                        msg.sender_id === selectedUser)
-                  )
-                  .map((msg) => {
-                    const isCurrentUser = msg.sender_id === session.user.id;
-                    const sender = chatList.current[msg.sender_id];
+                {currentMessages.map((msg) => {
+                  const isCurrentUser = msg.sender_id === session.user.id;
+                  const sender = chatList[msg.sender_id];
 
-                    return (
+                  return (
+                    <div
+                      key={msg.id}
+                      className={`flex gap-5 ${
+                        isCurrentUser ? "justify-end" : "justify-start"
+                      }`}
+                    >
+                      {!isCurrentUser && (
+                        <Avatar className="h-10 w-10 mt-1">
+                          <AvatarImage src={sender?.avatar_url} />
+                          <AvatarFallback className="text-xs">
+                            {sender?.username?.charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                      )}
+
                       <div
-                        key={msg.id}
-                        className={`flex gap-5 ${
-                          isCurrentUser ? "justify-end" : "justify-start"
+                        className={`flex flex-col ${
+                          isCurrentUser ? "items-end" : "items-start"
                         }`}
                       >
-                        {!isCurrentUser && (
-                          <Avatar className="h-10 w-10 mt-1">
-                            <AvatarImage src={sender?.avatar_url} />
-                            <AvatarFallback className="text-xs">
-                              {sender?.username?.charAt(0).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                        )}
-
-                        <div
-                          className={`flex flex-col ${
-                            isCurrentUser ? "items-end" : "items-start"
-                          }`}
+                        <Card
+                          className={`${
+                            isCurrentUser
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted"
+                          } min-w-40 max-w-100 rounded-lg py-4`}
                         >
-                          <Card
-                            className={`${
-                              isCurrentUser
-                                ? "bg-primary text-primary-foreground"
-                                : "bg-muted"
-                            } min-w-40 max-w-100 rounded-lg py-4`}
-                          >
-                            <CardContent>
-                              <p className="text-sm">{msg.message}</p>
-                            </CardContent>
-                          </Card>
-
-                          {isCurrentUser && (
-                            <Badge
-                              variant={msg.seen ? "secondary" : "outline"}
-                              className="text-xs px-1 py-0"
-                            >
-                              {msg.seen ? "Seen" : "Sent"}
-                            </Badge>
-                          )}
-                        </div>
+                          <CardContent>
+                            <p className="text-sm">{msg.message}</p>
+                          </CardContent>
+                        </Card>
 
                         {isCurrentUser && (
-                          <Avatar className="h-10 w-10 mt-1">
-                            <AvatarImage
-                              src={
-                                chatList.current[session.user.id]?.avatar_url
-                              }
-                            />
-                            <AvatarFallback className="text-xs">
-                              {chatList.current[session.user.id]?.username
-                                ?.charAt(0)
-                                .toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
+                          <Badge
+                            variant={msg.seen ? "secondary" : "outline"}
+                            className="text-xs px-1 py-0"
+                          >
+                            {msg.seen ? "Seen" : "Sent"}
+                          </Badge>
                         )}
                       </div>
-                    );
-                  })}
+
+                      {isCurrentUser && (
+                        <Avatar className="h-10 w-10 mt-1">
+                          <AvatarImage
+                            src={chatList[session.user.id]?.avatar_url}
+                          />
+                          <AvatarFallback className="text-xs">
+                            {chatList[session.user.id]?.username
+                              ?.charAt(0)
+                              .toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
               <div ref={messagesEndRef} />
             </ScrollArea>
 
-            <div className="py-7 px-20 border-t">
+            <div className="py-7 px-5 md:px-10 lg:px-20 border-t">
               <form onSubmit={handleSendMessage} className="flex gap-4">
                 <Input
                   type="text"

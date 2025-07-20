@@ -12,32 +12,54 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
 } from "@/components/ui/sidebar";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
-const ChatList = ({ userId, chatListData, onChatSelect, selectedUserId }) => {
+const ChatList = ({
+  userId,
+  chatListData,
+  onChatSelect,
+  selectedUserId,
+  onProfileClick,
+}) => {
   const { session, logout } = useAuth();
   const navigate = useNavigate();
 
   return (
     <Sidebar>
-      <SidebarHeader className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-3">
-          <Avatar className="w-9 h-9">
-            <AvatarImage
-              src={chatListData[userId]?.avatar_url || "/placeholder.svg"}
-              alt={chatListData[userId]?.username}
-            />
-            <AvatarFallback>
-              {chatListData[userId]?.username?.charAt(0).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
+      <Tooltip>
+        <TooltipTrigger>
+          <SidebarHeader
+            className="flex items-center justify-between px-6 py-4 border-b hover:bg-muted/50 transition-colors cursor-pointer"
+            onClick={onProfileClick}
+          >
+            <div className="flex items-center gap-3 ">
+              <Avatar className="w-9 h-9">
+                <AvatarImage
+                  src={chatListData[userId]?.avatar_url || "/placeholder.svg"}
+                  alt={chatListData[userId]?.username}
+                />
+                <AvatarFallback>
+                  {chatListData[userId]?.username?.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
 
-          <h1 className="text-xl font-bold">
-            {chatListData[userId]?.username}
-          </h1>
-        </div>
-      </SidebarHeader>
+              <h1 className="text-xl font-bold">
+                {chatListData[userId]?.username}
+              </h1>
+            </div>
+          </SidebarHeader>
+        </TooltipTrigger>
+
+        <TooltipContent side="right">
+          <p>Open profile</p>
+        </TooltipContent>
+      </Tooltip>
 
       <SidebarContent className="">
         <SidebarMenu>

@@ -153,7 +153,10 @@ const VideoCall = ({
               .update({
                 status: "ended",
               })
-              .eq("id", data.id);
+              .eq("id", data.id)
+              .then(() => {
+                console.log("Call ended and status updated");
+              });
           });
         },
 
